@@ -984,6 +984,10 @@ fn read_include(iter: &mut Peekable<Iter<Token>>, stack: Vec<&PathBuf>, macros: 
         _ => return Err("expect a string as path after `include` command.".into())
     };
 
+    if !path.exists() {
+        return Err(format!("include error, file/directory does not exist: `{}`.", path.to_str().expect("error convert to str")).into());
+    }
+
     if path.is_dir() {
         // directory process
         for entry in path.read_dir().expect("error read directory") {
