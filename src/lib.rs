@@ -846,13 +846,18 @@ fn drop_comments(iter: &mut Peekable<Chars>, tokens: &mut Vec<Token>) -> Result<
     Ok(())
 }
 
-pub fn read_code(stack: Vec<&PathBuf>, macros: &mut HashMap<String, Box<dyn Invoker>>) -> Result<Code, Error> {
+pub fn read_path(stack: Vec<&PathBuf>, macros: &mut HashMap<String, Box<dyn Invoker>>) -> Result<Code, Error> {
     let path = stack.last().expect("missing path");
-    let code = fs::read_to_string(path)
+    let mut code = fs::read_to_string(path)
         .expect(&format!("error reading code on path: `{}`", path.to_str().expect("error convert to str")))
         .parse::<Code>()?;
 
-    let mut tokens = Vec::new();
+    read_code(&mut code, &stack, macros)?;
+    Ok(code)
+}
+
+fn read_code(code: &mut Code, stack: &Vec<&PathBuf>, macros: &mut HashMap<String, Box<dyn Invoker>>) -> Result<(), Error> {
+    let mut tokens = Vec::with_capacity(code.tokens.len());
     let mut iter = code.tokens.iter().peekable();
 
     loop {
@@ -875,7 +880,8 @@ pub fn read_code(stack: Vec<&PathBuf>, macros: &mut HashMap<String, Box<dyn Invo
         }
     }
 
-    Ok(Code { tokens })
+    *code = Code { tokens };
+    Ok(())
 }
 
 fn read_macro(iter: &mut Peekable<Iter<Token>>) -> Result<Macro, Error> {
@@ -991,7 +997,7 @@ fn read_include(iter: &mut Peekable<Iter<Token>>, stack: Vec<&PathBuf>, macros: 
                         }
                         let mut stack = stack.clone();
                         stack.push(&path);
-                        read_code(stack, macros)?;
+                        read_path(stack, macros)?;
                     }
                     _ => ()
                 }
@@ -1005,7 +1011,7 @@ fn read_include(iter: &mut Peekable<Iter<Token>>, stack: Vec<&PathBuf>, macros: 
         }
         let mut stack = stack.clone();
         stack.push(&path);
-        read_code(stack, macros)?;
+        read_path(stack, macros)?;
     }
 
     // remove ws

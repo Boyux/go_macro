@@ -29,7 +29,7 @@ fn main() {
                     Some(s) if s == "go" => {
                         let mut stack = Vec::new();
                         stack.push(&path);
-                        let code = go_macro::read_code(stack, &mut macros).expect("error read code");
+                        let code = go_macro::read_path(stack, &mut macros).expect("error read code");
                         codes.insert(path, code);
                     }
                     _ => ()
@@ -48,7 +48,7 @@ fn main() {
         }
         let mut stack = Vec::new();
         stack.push(&opt.source);
-        let mut code = go_macro::read_code(stack, &mut macros).expect("error read code");
+        let mut code = go_macro::read_path(stack, &mut macros).expect("error read code");
         code = code.process(&macros).expect("error process macros");
         fs::write(opt.target.join(opt.source.file_name().expect("unexpected file name")), code.to_string())
             .expect("error writing to target");
