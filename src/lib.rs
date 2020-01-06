@@ -9,8 +9,13 @@ use std::slice::Iter;
 use std::iter::Peekable;
 use std::path::PathBuf;
 
+/// The error, it should just be a single message, so a Box<dyn error::Error> is
+/// enough, and it is easy to build by String/&str.
 pub type Error = Box<dyn error::Error>;
 
+/// Code is a wrapper struct containing Vec<Token>, represents a snip of code.
+/// We make a wrapper because of rust orphan-rule, we cannot impl methods for
+/// Vec<Token> directly, so a wrapper is necessary.
 #[derive(Debug, Clone)]
 pub struct Code {
     pub tokens: Vec<Token>,
@@ -24,12 +29,17 @@ impl FromStr for Code {
 }
 
 impl Code {
+    /// Invoke macros in Code, will process multiple times until there are no macros left in code,
+    /// which means the macro would expand recursively, and the recursive limit is set to 32 on default.
     pub fn process(&self, macros: &HashMap<String, Box<dyn Invoker>>) -> Result<Code, Error> {
         let (mut code, n) = process(self, macros)?;
+
+        // if there are no macros left, which means all macros have been invoked, then done.
         if n == 0 {
             return Ok(code);
         }
 
+        // depth represents recursion times in this program.
         let mut depth = 0;
         while depth <= 32 {
             let rs = process(&code, macros)?;
@@ -45,6 +55,7 @@ impl Code {
 }
 
 fn process(code: &Code, macros: &HashMap<String, Box<dyn Invoker>>) -> Result<(Code, usize), Error> {
+    // n represents how many macros has been invoked in this program.
     let mut n = 0;
     let mut tokens = Vec::with_capacity(code.tokens.len());
     let mut iter = code.tokens.iter().peekable();
@@ -55,9 +66,12 @@ fn process(code: &Code, macros: &HashMap<String, Box<dyn Invoker>>) -> Result<(C
                     Token::Ident(ref s) => {
                         match macros.get(s) {
                             // #1 macro(params) ...
+                            // (params) should be right next to the macro name without any whitespace
                             Some(r#macro) if r#macro.info().1.is_some() => {
                                 match paren(&mut iter) {
                                     Ok(code) => {
+                                        // we just collect the params but do not handle the macro invocation
+                                        // inside the params, the Invoker would do this.
                                         let params = split_by_comma(code)
                                             .into_iter()
                                             .map(|x| Code { tokens: x })
@@ -67,6 +81,9 @@ fn process(code: &Code, macros: &HashMap<String, Box<dyn Invoker>>) -> Result<(C
                                             r#macro.invoke(macros, Some(params))?
                                         });
                                     }
+                                    // can't find any params inside a pair of parenthesis, just let it go.
+                                    // HINT: if a macro requires params but no params were given, we treat
+                                    // it as a single ident, not a macro.
                                     Err(code) => {
                                         tokens.push(token.clone());
                                         tokens.extend(code.process(macros)?);
@@ -92,11 +109,15 @@ fn process(code: &Code, macros: &HashMap<String, Box<dyn Invoker>>) -> Result<(C
     Ok((Code { tokens }, n))
 }
 
+/// Find code in parenthesis, returning code without parenthesis if success,
+/// and if it can't find any right side parenthesis, then it would return the
+/// code it has read.
 fn paren(iter: &mut Peekable<Iter<Token>>) -> Result<Code, Code> {
     let mut tokens = Vec::new();
 
     match iter.peek() {
         Some(Token::Symbol(Symbol::LParen)) => { iter.next(); }
+        // if the first token is not `(`, then it is what we want, return Err.
         _ => return Err(Code { tokens })
     }
 
@@ -118,6 +139,8 @@ fn paren(iter: &mut Peekable<Iter<Token>>) -> Result<Code, Code> {
                 tokens.push(token.clone())
             }
             None => {
+                // no right parenthesis found, return the code it has read, should
+                // add the left side parenthesis at the front.
                 tokens.insert(0, Token::Symbol(Symbol::LParen));
                 return Err(Code { tokens });
             }
@@ -125,10 +148,12 @@ fn paren(iter: &mut Peekable<Iter<Token>>) -> Result<Code, Code> {
     }
 }
 
+/// split tokens by comma. Comma in parenthesis/brace/bracket would be skipped.
 fn split_by_comma(code: Code) -> Vec<Vec<Token>> {
     let mut tokens = Vec::new();
     let mut iter = code.tokens.iter().peekable();
 
+    // use some counters to ensure the target comma is not in parenthesis/brace/bracket pairs.
     let mut paren_n = 0;
     let mut brace_n = 0;
     let mut bracket_n = 0;
@@ -163,6 +188,7 @@ fn split_by_comma(code: Code) -> Vec<Vec<Token>> {
     tokens
 }
 
+/// Trim leading and trailing whitespace tokens.
 fn trim(tokens: &mut Vec<Token>) {
     loop {
         match tokens.first() {
@@ -196,6 +222,7 @@ impl ToString for Code {
     }
 }
 
+// convert single token to Code
 impl From<Token> for Code {
     fn from(x: Token) -> Code {
         Code { tokens: Box::new([x]).to_vec() }
@@ -385,6 +412,7 @@ impl ToString for Ws {
     }
 }
 
+/// Invoker represents macro, which can be invoked by Code.
 pub trait Invoker {
     fn invoke(&self, macros: &HashMap<String, Box<dyn Invoker>>, params: Option<Vec<Code>>) -> Result<Code, Error>;
     fn info(&self) -> (String, Option<Vec<String>>, Code);

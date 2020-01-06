@@ -160,5 +160,5 @@ func main() {
 - [x] Add command `#include`;
 - [ ] Add more commands like `#if`, `#for`; 
 - [ ] Use LinkedList instead of Vec for better performance;
-- [ ] Maybe it is necessary to write more comments?
+- [x] Maybe it is necessary to write more comments?
 
